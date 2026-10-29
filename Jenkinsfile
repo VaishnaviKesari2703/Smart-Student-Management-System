@@ -25,6 +25,8 @@ pipeline {
         JAR_PATH   = 'target/smart-student-management-1.0.0.jar'
         // Point directly to installed Maven so no Global Tool config needed
         MVN        = "C:\\Users\\vaish\\tools\\maven\\apache-maven-3.9.6\\bin\\mvn.cmd"
+        // Jenkins service runs as LocalSystem (no docker on PATH) -> absolute path + engine pipe
+        DOCKER     = "\"C:\\Users\\vaish\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe\" -H npipe:////./pipe/dockerDesktopLinuxEngine"
     }
 
     options {
@@ -80,7 +82,7 @@ pipeline {
         stage('Docker Build') {
             steps {
                 echo '🐳 Building Docker image...'
-                bat "docker build -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} ."
+                bat "%DOCKER% build -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} ."
                 echo "✅ Docker image built: ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
             }
         }
@@ -89,7 +91,7 @@ pipeline {
         stage('Docker Verify') {
             steps {
                 echo '🔍 Verifying Docker image exists...'
-                bat "docker image inspect ${env.IMAGE_NAME}:${env.IMAGE_TAG} > nul 2>&1 && echo Image verified. || (echo ERROR: Image not found! && exit /b 1)"
+                bat "%DOCKER% image inspect ${env.IMAGE_NAME}:${env.IMAGE_TAG} > nul 2>&1 && echo Image verified. || (echo ERROR: Image not found! && exit /b 1)"
             }
         }
     }
