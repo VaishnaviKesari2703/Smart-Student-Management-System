@@ -11,31 +11,20 @@
 //   7. Results     – publish JUnit XML reports
 //
 // Windows-compatible: uses `bat` steps.
+// Uses PATH-based mvn so no Global Tool Configuration is required.
 // To run on Linux agents, replace every `bat '...'` with `sh '...'`
-//
-// Prerequisites in Jenkins:
-//   • Global Tool Configuration:
-//       - JDK:   name = "JDK17"    (point to Java 17 home)
-//       - Maven: name = "Maven396" (point to Maven 3.9.6 home)
-//   • Credentials:
-//       - GitHub credentials (username/token) with ID "github-credentials"
-//   • Plugins: Pipeline, Git, JUnit, Docker Pipeline
 // ─────────────────────────────────────────────────────────────────────────────
 
 pipeline {
 
     agent any
 
-    // ── Tool references (must match Global Tool Configuration names) ──────────
-    tools {
-        jdk   'JDK17'
-        maven 'Maven396'
-    }
-
     environment {
-        IMAGE_NAME    = 'smart-student-management'
-        IMAGE_TAG     = '1.0.0'
-        JAR_PATH      = 'target/smart-student-management-1.0.0.jar'
+        IMAGE_NAME = 'smart-student-management'
+        IMAGE_TAG  = '1.0.0'
+        JAR_PATH   = 'target/smart-student-management-1.0.0.jar'
+        // Point directly to installed Maven so no Global Tool config needed
+        MVN        = "C:\\Users\\vaish\\tools\\maven\\apache-maven-3.9.6\\bin\\mvn.cmd"
     }
 
     options {
@@ -59,7 +48,7 @@ pipeline {
         stage('Compile') {
             steps {
                 echo '🔨 Compiling Java source files...'
-                bat 'mvn clean compile -B'
+                bat "%MVN% clean compile -B"
                 echo '✅ Compilation successful.'
             }
         }
@@ -68,7 +57,7 @@ pipeline {
         stage('Test') {
             steps {
                 echo '🧪 Running JUnit 5 tests...'
-                bat 'mvn test -B'
+                bat "%MVN% test -B"
                 echo '✅ All tests passed.'
             }
             post {
@@ -83,9 +72,8 @@ pipeline {
         stage('Package') {
             steps {
                 echo '📦 Packaging application into JAR...'
-                bat 'mvn package -DskipTests -B'
-                echo "✅ JAR created: ${env.JAR_PATH}"
-                bat "if exist ${env.JAR_PATH} (echo JAR found.) else (echo ERROR: JAR missing! && exit /b 1)"
+                bat "%MVN% package -DskipTests -B"
+                bat "if exist ${env.JAR_PATH} (echo JAR verified: ${env.JAR_PATH}) else (echo ERROR: JAR missing! && exit /b 1)"
             }
         }
 
@@ -110,23 +98,10 @@ pipeline {
     // ── Post-pipeline notifications ───────────────────────────────────────────
     post {
         success {
-            echo """
-╔══════════════════════════════════════════╗
-║  ✅ PIPELINE SUCCEEDED                   ║
-║  Build   : #${env.BUILD_NUMBER}          ║
-║  Job     : ${env.JOB_NAME}              ║
-║  Image   : ${env.IMAGE_NAME}:${env.IMAGE_TAG}  ║
-╚══════════════════════════════════════════╝
-"""
+            echo "✅ PIPELINE SUCCEEDED | Build #${env.BUILD_NUMBER} | Job: ${env.JOB_NAME} | Image: ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
         }
         failure {
-            echo """
-╔══════════════════════════════════════════╗
-║  ❌ PIPELINE FAILED                      ║
-║  Build  : #${env.BUILD_NUMBER}           ║
-║  Check console output for details.       ║
-╚══════════════════════════════════════════╝
-"""
+            echo "❌ PIPELINE FAILED | Build #${env.BUILD_NUMBER} | Check console output for details."
         }
         always {
             echo 'Pipeline execution completed.'
