@@ -1,111 +1,111 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// Jenkinsfile – Smart Student Management System
-//
-// Pipeline stages:
-//   1. Checkout    – clone from GitHub
-//   2. Compile     – mvn compile
-//   3. Test        – mvn test (JUnit 5)
-//   4. Package     – mvn package
-//   5. Docker Build – docker build (only if package succeeded)
-//   6. Docker Verify – confirm image exists locally
-//   7. Results     – publish JUnit XML reports
-//
-// Windows-compatible: uses `bat` steps.
-// Uses PATH-based mvn so no Global Tool Configuration is required.
-// To run on Linux agents, replace every `bat '...'` with `sh '...'`
-// ─────────────────────────────────────────────────────────────────────────────
-
+// Declarative pipeline: Checkout -> Build -> Test -> Package -> Docker Build -> Release -> Deploy
+// Jenkins prerequisites (Manage Jenkins > Tools): a JDK named "JDK17" and a Maven named "Maven3".
+// Docker (with Compose v2) must be installed on the agent. Works on Windows (bat) and Linux (sh).
 pipeline {
-
     agent any
 
-    environment {
-        IMAGE_NAME = 'smart-student-management'
-        IMAGE_TAG  = '1.0.0'
-        JAR_PATH   = 'target/smart-student-management-1.0.0.jar'
-        // Point directly to installed Maven so no Global Tool config needed
-        MVN        = "C:\\Users\\vaish\\tools\\maven\\apache-maven-3.9.6\\bin\\mvn.cmd"
-        // Jenkins service runs as LocalSystem (no docker on PATH) -> absolute path + engine pipe
-        DOCKER     = "\"C:\\Users\\vaish\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe\" -H npipe:////./pipe/dockerDesktopLinuxEngine"
+    tools {
+        jdk 'JDK17'
+        maven 'Maven3'
     }
 
     options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
         timeout(time: 30, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '5'))
+    }
+
+    parameters {
+        string(name: 'GIT_URL', defaultValue: '', description: 'Optional: GitHub repository URL. Leave empty to use the job SCM configuration.')
+        string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Branch to build (used only with GIT_URL)')
+        string(name: 'GIT_CREDENTIALS_ID', defaultValue: '', description: 'Optional: Jenkins credentials ID for a private repository (never hardcode secrets)')
+    }
+
+    environment {
+        APP_NAME  = 'smart-student-management'
+        VERSION   = '1.0.0'
+        IMAGE     = "${APP_NAME}:${VERSION}"
+        MAVEN_OPTS = '-Dmaven.repo.local=.m2/repository'
     }
 
     stages {
-
-        // ── Stage 1: Checkout ─────────────────────────────────────────────────
         stage('Checkout') {
             steps {
-                echo '🔄 Checking out source code from GitHub...'
-                checkout scm
-                echo '✅ Checkout complete.'
-            }
-        }
-
-        // ── Stage 2: Compile ──────────────────────────────────────────────────
-        stage('Compile') {
-            steps {
-                echo '🔨 Compiling Java source files...'
-                bat "%MVN% clean compile -B"
-                echo '✅ Compilation successful.'
-            }
-        }
-
-        // ── Stage 3: Test ─────────────────────────────────────────────────────
-        stage('Test') {
-            steps {
-                echo '🧪 Running JUnit 5 tests...'
-                bat "%MVN% test -B"
-                echo '✅ All tests passed.'
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
-                    echo 'ℹ  JUnit test results published.'
+                script {
+                    if (params.GIT_URL?.trim()) {
+                        def cfg = [url: params.GIT_URL.trim()]
+                        if (params.GIT_CREDENTIALS_ID?.trim()) { cfg.credentialsId = params.GIT_CREDENTIALS_ID.trim() }
+                        git branch: params.GIT_BRANCH, url: cfg.url, credentialsId: cfg.credentialsId
+                    } else {
+                        checkout scm
+                    }
                 }
             }
         }
 
-        // ── Stage 4: Package ──────────────────────────────────────────────────
+        stage('Build') {
+            steps {
+                echo 'Compiling with Maven (clean compile)...'
+                runCmd('mvn -B clean compile')
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running JUnit 5 tests...'
+                runCmd('mvn -B test')
+            }
+            post {
+                always {
+                    junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: false
+                }
+            }
+        }
+
         stage('Package') {
             steps {
-                echo '📦 Packaging application into JAR...'
-                bat "%MVN% package -DskipTests -B"
-                bat "if exist ${env.JAR_PATH} (echo JAR verified: ${env.JAR_PATH}) else (echo ERROR: JAR missing! && exit /b 1)"
+                echo 'Creating executable Spring Boot JAR (tests already passed)...'
+                runCmd('mvn -B package -DskipTests')
+                archiveArtifacts artifacts: "target/${APP_NAME}-${VERSION}.jar", fingerprint: true
             }
         }
 
-        // ── Stage 5: Docker Build ─────────────────────────────────────────────
         stage('Docker Build') {
             steps {
-                echo '🐳 Building Docker image...'
-                bat "%DOCKER% build -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} ."
-                echo "✅ Docker image built: ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+                echo "Building Docker image ${IMAGE}..."
+                runCmd("docker build -t ${IMAGE} .")
             }
         }
 
-        // ── Stage 6: Docker Verify ────────────────────────────────────────────
-        stage('Docker Verify') {
+        stage('Release') {
             steps {
-                echo '🔍 Verifying Docker image exists...'
-                bat "%DOCKER% image inspect ${env.IMAGE_NAME}:${env.IMAGE_TAG} > nul 2>&1 && echo Image verified. || (echo ERROR: Image not found! && exit /b 1)"
+                echo "Tagging image as ${APP_NAME}:${VERSION} and latest..."
+                runCmd("docker tag ${IMAGE} ${APP_NAME}:latest")
+                runCmd("docker image ls ${APP_NAME}")
+            }
+        }
+
+        stage('Deployment') {
+            steps {
+                echo 'Deploying with Docker Compose (data persists in the student-data volume)...'
+                runCmd('docker compose up -d --force-recreate')
+                runCmd('docker compose ps')
             }
         }
     }
 
-    // ── Post-pipeline notifications ───────────────────────────────────────────
     post {
-        success {
-            echo "✅ PIPELINE SUCCEEDED | Build #${env.BUILD_NUMBER} | Job: ${env.JOB_NAME} | Image: ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
-        }
-        failure {
-            echo "❌ PIPELINE FAILED | Build #${env.BUILD_NUMBER} | Check console output for details."
-        }
-        always {
-            echo 'Pipeline execution completed.'
-        }
+        success { echo "SUCCESS: ${APP_NAME} ${VERSION} built, tested and deployed at http://localhost:8080" }
+        failure { echo 'FAILURE: pipeline stopped. Check the stage logs above (compile or test failure).' }
+        always  { echo "Pipeline finished with status: ${currentBuild.currentResult}" }
+    }
+}
+
+// Runs a shell command on either Linux/macOS (sh) or Windows (bat) agents.
+def runCmd(String command) {
+    if (isUnix()) {
+        sh command
+    } else {
+        bat command
     }
 }

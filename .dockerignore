@@ -1,0 +1,13 @@
+.git
+.gitignore
+.idea
+.vscode
+*.iml
+data/
+target/*
+!target/smart-student-management-1.0.0.jar
+src/
+pom.xml
+Jenkinsfile
+README.md
+*.log

@@ -1,0 +1,26 @@
+services:
+  student-app:
+    image: smart-student-management:1.0.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart-student-management
+    ports:
+      - "8080:8080"
+    environment:
+      APP_DATA_DIR: /app/data
+      PORT: "8080"
+      JAVA_OPTS: "-Xmx256m"
+      APP_SEED_DEMO_DATA: "true"
+    volumes:
+      - student-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  student-data:
