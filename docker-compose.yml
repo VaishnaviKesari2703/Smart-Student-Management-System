@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
     container_name: smart-student-management
     ports:
-      - "8080:8080"
+      - "${APP_HOST_PORT:-8080}:8080"
     environment:
       APP_DATA_DIR: /app/data
       PORT: "8080"

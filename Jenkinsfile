@@ -25,6 +25,7 @@ pipeline {
         APP_NAME  = 'smart-student-management'
         VERSION   = '1.0.0'
         IMAGE     = "${APP_NAME}:${VERSION}"
+        APP_HOST_PORT = '8081'
         MAVEN_OPTS = '-Dmaven.repo.local=.m2/repository'
     }
 
@@ -73,31 +74,54 @@ pipeline {
         stage('Docker Build') {
             steps {
                 echo "Building Docker image ${IMAGE}..."
-                runCmd("docker build -t ${IMAGE} .")
+                runDocker("version")
+                runDocker("build -t ${IMAGE} .")
             }
         }
 
         stage('Release') {
             steps {
                 echo "Tagging image as ${APP_NAME}:${VERSION} and latest..."
-                runCmd("docker tag ${IMAGE} ${APP_NAME}:latest")
-                runCmd("docker image ls ${APP_NAME}")
+                runDocker("tag ${IMAGE} ${APP_NAME}:latest")
+                runDocker("image ls ${APP_NAME}")
             }
         }
 
         stage('Deployment') {
             steps {
                 echo 'Deploying with Docker Compose and waiting for the app health check...'
-                runCmd('docker compose up -d --force-recreate --wait --wait-timeout 90')
-                runCmd('docker compose ps')
+                runDocker('compose up -d --force-recreate --wait --wait-timeout 90')
+                runDocker('compose ps')
             }
         }
     }
 
     post {
-        success { echo "SUCCESS: ${APP_NAME} ${VERSION} built, tested and deployed at http://localhost:8080" }
+        success { echo "SUCCESS: ${APP_NAME} ${VERSION} built, tested and deployed at http://localhost:${APP_HOST_PORT}" }
         failure { echo 'FAILURE: pipeline stopped. Check the stage logs above (compile or test failure).' }
         always  { echo "Pipeline finished with status: ${currentBuild.currentResult}" }
+    }
+}
+
+// Docker Desktop can install its CLI under a user's profile, which is not on a Windows service's PATH.
+def runDocker(String command) {
+    if (isUnix()) {
+        sh "docker ${command}"
+    } else {
+        bat """
+@echo off
+setlocal
+set "DOCKER_EXE="
+for /f "delims=" %%D in ('where docker 2^>nul') do if not defined DOCKER_EXE set "DOCKER_EXE=%%D"
+if not defined DOCKER_EXE if exist "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe" set "DOCKER_EXE=C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe"
+if not defined DOCKER_EXE for /d %%U in ("C:\\Users\\*") do if not defined DOCKER_EXE if exist "%%~fU\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe" set "DOCKER_EXE=%%~fU\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe"
+if not defined DOCKER_EXE (
+  echo ERROR: docker.exe was not found on PATH or in common Docker Desktop install locations.
+  exit /b 127
+)
+echo Using Docker CLI: "%DOCKER_EXE%"
+"%DOCKER_EXE%" ${command}
+"""
     }
 }
 

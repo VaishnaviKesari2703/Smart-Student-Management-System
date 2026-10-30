@@ -143,18 +143,18 @@ docker compose down                                 # keeps data
 docker compose down -v                              # also deletes the data volume
 ```
 
-JSON files live in the named volume `student-data` mounted at `/app/data`, so data survives `docker compose restart` and container re-creation. Environment variables: `PORT`, `APP_DATA_DIR`, `JAVA_OPTS`, `APP_SEED_DEMO_DATA`.
+JSON files live in the named volume `student-data` mounted at `/app/data`, so data survives `docker compose restart` and container re-creation. Environment variables: `PORT`, `APP_HOST_PORT` (host port; defaults to `8080`), `APP_DATA_DIR`, `JAVA_OPTS`, `APP_SEED_DEMO_DATA`.
 
 ## 11. Jenkins CI/CD
 
-Pipeline stages (see `Jenkinsfile`): **Checkout -> Build (`mvn clean compile`) -> Test (`mvn test`, JUnit report published) -> Package (executable JAR) -> Docker Build -> Release (tag 1.0.0 and latest) -> Deployment (`docker compose up -d --wait`)**. Deployment waits for the Compose health check; a compile, test, or health-check failure marks the pipeline failed.
+Pipeline stages (see `Jenkinsfile`): **Checkout -> Build (`mvn clean compile`) -> Test (`mvn test`, JUnit report published) -> Package (executable JAR) -> Docker Build -> Release (tag 1.0.0 and latest) -> Deployment (`docker compose up -d --wait`)**. On Windows, the pipeline searches common Docker Desktop install locations if `docker.exe` is not on the Jenkins service PATH. It deploys to port **8081** by default so Jenkins can keep using **8080**. Deployment waits for the Compose health check; a compile, test, Docker, or health-check failure marks the pipeline failed.
 
 Setup:
 
 1. Install Jenkins and open http://localhost:8080 (if the app already uses 8080, start Jenkins on another port, e.g. `--httpPort=9090`, or run the app on another port).
 2. Install the suggested plugins (Pipeline, Git, JUnit).
 3. **Manage Jenkins -> Tools**: add a JDK named **`JDK17`** and a Maven named **`Maven3`** (names must match the Jenkinsfile).
-4. Docker Desktop must be running and the Jenkins service account must be able to run `docker` (on Windows, run the Jenkins service as your user or add it to the `docker-users` group, then restart the service).
+4. Docker Desktop must be running. The Jenkins service account must be able to run the Docker CLI and connect to the Docker Engine. If Jenkins reports that Docker cannot connect, configure the Jenkins Windows service to run under a Windows account that has access to Docker Desktop, then restart Jenkins. The pipeline publishes the app at `http://localhost:8081` by default; Compose used outside Jenkins still defaults to port 8080.
 5. Push the project to GitHub:
    ```powershell
    git init ; git add . ; git commit -m "Smart Student Management System"
@@ -173,7 +173,8 @@ Setup:
 | `mvn` is not recognized | Add Maven's `bin` folder to PATH and open a new terminal |
 | `release version 17 not supported` | Use JDK 17 or newer; check `java -version` and `JAVA_HOME` |
 | Login page loads without styles | Browser needs internet for the Bootstrap CDN |
-| `docker: error during connect` | Start Docker Desktop and wait until it says *running* |
+| `docker: error during connect` | Start Docker Desktop. If it is running, configure the Jenkins Windows service to use an account with Docker Desktop access, then restart Jenkins |
+| Port 8080 already in use during Jenkins deployment | Jenkins uses 8080; the Jenkins pipeline maps the app to 8081. For manual Compose runs, set `$env:APP_HOST_PORT="8081"` before `docker compose up -d` |
 | Dockerfile: `target/...jar not found` | Run `mvn clean package` first |
 | Data looks empty or reset | Check `APP_DATA_DIR`; in Docker don't use `docker compose down -v` |
 | Jenkins: `Tool type "jdk" does not have an install of "JDK17"` | Configure tools with the exact names `JDK17` and `Maven3` |
