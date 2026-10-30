@@ -87,8 +87,8 @@ pipeline {
 
         stage('Deployment') {
             steps {
-                echo 'Deploying with Docker Compose (data persists in the student-data volume)...'
-                runCmd('docker compose up -d --force-recreate')
+                echo 'Deploying with Docker Compose and waiting for the app health check...'
+                runCmd('docker compose up -d --force-recreate --wait --wait-timeout 90')
                 runCmd('docker compose ps')
             }
         }

@@ -75,7 +75,7 @@ Pages: Login, Admin Dashboard, Student Dashboard, Student Management, **Add Stud
 | JDK 17+ | build and run | https://adoptium.net/temurin/releases/?version=17 or `winget install EclipseAdoptium.Temurin.17.JDK` |
 | Maven 3.9+ | build and test | https://maven.apache.org/download.cgi - unzip, add `bin` to PATH. Check: `mvn -version` |
 | Git | source control, Jenkins checkout | https://git-scm.com/download/win or `winget install Git.Git` |
-| Docker Desktop | containers | https://www.docker.com/products/docker-desktop/ (enable WSL 2, restart) |
+| Docker Desktop with Docker Compose v2.17+ | containers and Jenkins deployment health checks | https://www.docker.com/products/docker-desktop/ (enable WSL 2, restart) |
 | Jenkins | CI/CD | https://www.jenkins.io/download/ (Windows `.msi`) |
 
 Maven manual setup (PowerShell, current session):
@@ -147,7 +147,7 @@ JSON files live in the named volume `student-data` mounted at `/app/data`, so da
 
 ## 11. Jenkins CI/CD
 
-Pipeline stages (see `Jenkinsfile`): **Checkout -> Build (`mvn clean compile`) -> Test (`mvn test`, JUnit report published) -> Package (executable JAR) -> Docker Build -> Release (tag 1.0.0 and latest) -> Deployment (`docker compose up -d`)**. A compile or test failure stops the pipeline, so the image is only built from passing code.
+Pipeline stages (see `Jenkinsfile`): **Checkout -> Build (`mvn clean compile`) -> Test (`mvn test`, JUnit report published) -> Package (executable JAR) -> Docker Build -> Release (tag 1.0.0 and latest) -> Deployment (`docker compose up -d --wait`)**. Deployment waits for the Compose health check; a compile, test, or health-check failure marks the pipeline failed.
 
 Setup:
 
